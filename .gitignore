@@ -1,0 +1,39 @@
+# ====== 数据 & DLC 项目（按用户要求 ignore）======
+data/
+dlc_project/
+.dlc_config_path
+
+# ====== Python ======
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.Python
+build/
+dist/
+.eggs/
+pip-wheel-metadata/
+
+# ====== 虚拟环境 ======
+.venv/
+venv/
+env/
+ENV/
+
+# ====== Jupyter ======
+.ipynb_checkpoints/
+
+# ====== 编辑器 / IDE ======
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ====== 项目内常见输出 ======
+*.log
+*.tmp
+*.bak

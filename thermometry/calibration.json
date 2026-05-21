@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "mode": "linear",
+  "linear": {
+    "a": 0.017857142857142797,
+    "b": 35.735714285714295
+  },
+  "meta": {
+    "anchors_file": "thermometry\\anchors.example.json",
+    "n_anchors": 2,
+    "fit_mode": "linear"
+  }
+}

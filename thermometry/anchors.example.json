@@ -1,0 +1,16 @@
+{
+  "mode": "linear",
+  "note": [
+    "把每一条 anchor 写成 {intensity, temperature, source} 三元组。",
+    "intensity  —— 在 *_thermal_intensity.csv 中读出的灰度值，可用",
+    "             `python -m thermometry measure --csv ... --bodypart ... --start ... --end ...`",
+    "             得到一段时间的 median；",
+    "temperature —— 同一段时间小鼠的真实温度 (°C)，来自温度记录.txt 或测量笔记。",
+    "至少需要 2 条不同 intensity 的 anchor 才能拟合斜率，4 条以上更稳。",
+    "mode = linear 推荐；piecewise 适合非线性伪彩 (如 IRON/Rainbow)。"
+  ],
+  "anchors": [
+    {"intensity":  82.0, "temperature": 37.2, "source": "tail_base 14:56:01 区段，温度记录读数"},
+    {"intensity": 110.0, "temperature": 37.7, "source": "tail_base 14:56:01 区段，实际接近"}
+  ]
+}
