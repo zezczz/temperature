@@ -1,5 +1,7 @@
 # Thermometry — 从 DLC + 热成像反算小鼠体温
 
+> 算法总览见 [algorithm_overview.md](algorithm_overview.md)。
+
 紧接 `alignment/` 模块之后使用。`alignment.dlc sample` 已经把 DLC 在彩色画面上的关键点反向映射到热成像，并采样得到每个 bodypart 位置的 **伪彩灰度强度** `intensity (0~255)`。这里要做的是：
 
 1. 用一组「灰度 ↔ 真实温度」的 **anchor**，拟合一个 `intensity → 温度 (°C)` 的标定函数；

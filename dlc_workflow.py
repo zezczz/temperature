@@ -11,8 +11,9 @@ DeepLabCut 标定工作流（创建工程 → 抽帧 → 人工标注 → 检查
     python dlc_workflow.py train-dataset   # 生成训练集
     python dlc_workflow.py train           # 训练网络
     python dlc_workflow.py evaluate        # 评估精度
-    python dlc_workflow.py analyze         # 对新视频做姿态估计
-    python dlc_workflow.py plot            # 生成带关键点的标注视频
+    python dlc_workflow.py analyze         # 推理（结果写入 data/dlc_results/）
+    python dlc_workflow.py plot            # 生成可视化视频（同上目录）
+    python dlc_workflow.py organize-results  # 把混在 data/color 里的旧结果搬过去
 
 单只动物 · 默认 3 点：left_eye, right_eye, tail_base
 可选第 4 点：在 dlc_config.py 设 INCLUDE_TAIL_MIDDLE = True 后运行 sync-bodyparts
@@ -175,6 +176,52 @@ def ensure_merged_video(data_dir: Path, clips: list[Path] | None = None) -> Path
         )
     print(f"合并完成: {merged} ({merged.stat().st_size / 1024 / 1024:.1f} MB)")
     return merged
+
+
+def _ensure_inference_dir() -> Path:
+    out = cfg.INFERENCE_OUTPUT_DIR
+    out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _print_inference_layout() -> None:
+    print("\n推理结果目录:")
+    print(f"  {cfg.INFERENCE_OUTPUT_DIR}")
+    print("    · *DLC*.csv / *.h5  — 坐标")
+    print("    · *_labeled.mp4     — 可视化视频")
+    print(f"  原始视频: {cfg.DATA_DIR}")
+
+
+def _is_dlc_result_file(path: Path) -> bool:
+    name = path.name
+    lower = name.lower()
+    if _is_merged_video(path):
+        return False
+    if "DLC" in name:
+        return True
+    if path.suffix.lower() in {".h5", ".pickle"}:
+        return True
+    if path.suffix.lower() == ".mp4" and ("labeled" in lower or "superimposed" in lower):
+        return True
+    return False
+
+
+def organize_legacy_results_in_color() -> None:
+    """将误写在 data/color 下的 DLC 结果移到 data/dlc_results/。"""
+    out = _ensure_inference_dir()
+    moved = 0
+    for path in sorted(cfg.DATA_DIR.iterdir()):
+        if not path.is_file() or not _is_dlc_result_file(path):
+            continue
+        dest = out / path.name
+        if dest.exists():
+            print(f"跳过（目标已存在）: {path.name}")
+            continue
+        path.rename(dest)
+        print(f"已移动: {path.name}")
+        moved += 1
+    print(f"\n共整理 {moved} 个文件。")
+    _print_inference_layout()
 
 
 def step_merge_videos() -> Path:
@@ -500,11 +547,18 @@ def step_analyze(deeplabcut, config: str) -> None:
     videos = find_analyze_videos(cfg.DATA_DIR) if cfg.ANALYZE_VIDEOS_FROM_DATA else []
     if not videos:
         raise FileNotFoundError(f"在 {cfg.DATA_DIR} 下未找到待分析视频")
+    out = _ensure_inference_dir()
     print("将对以下视频做姿态估计:")
     for v in videos:
         print(f"  - {v}")
-    deeplabcut.analyze_videos(config, videos, save_as_csv=True)
-    print("\n分析完成。结果在视频同目录或工程目录下的 csv/h5。")
+    deeplabcut.analyze_videos(
+        config,
+        videos,
+        save_as_csv=True,
+        destfolder=str(out),
+    )
+    print("\n分析完成。")
+    _print_inference_layout()
     print("下一步: python dlc_workflow.py plot")
 
 
@@ -512,8 +566,14 @@ def step_plot(deeplabcut, config: str) -> None:
     videos = find_analyze_videos(cfg.DATA_DIR) if cfg.ANALYZE_VIDEOS_FROM_DATA else []
     if not videos:
         raise FileNotFoundError(f"在 {cfg.DATA_DIR} 下未找到视频")
-    deeplabcut.create_labeled_video(config, videos)
-    print("\n已生成带关键点轨迹的视频（文件名通常含 labeled）。")
+    out = _ensure_inference_dir()
+    deeplabcut.create_labeled_video(
+        config,
+        videos,
+        destfolder=str(out),
+    )
+    print("\n可视化视频已生成。")
+    _print_inference_layout()
 
 
 def main() -> None:
@@ -537,6 +597,7 @@ def main() -> None:
             "evaluate",
             "analyze",
             "plot",
+            "organize-results",
             "all",
         ],
         help="要执行的步骤",
@@ -597,6 +658,8 @@ def main() -> None:
         step_analyze(deeplabcut, config)
     elif args.step == "plot":
         step_plot(deeplabcut, config)
+    elif args.step == "organize-results":
+        organize_legacy_results_in_color()
     elif args.step == "all":
         try:
             config = str(config_path())

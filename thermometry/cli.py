@@ -33,13 +33,18 @@ from thermometry.config import (
     ANCHORS_PATH,
     CALIBRATION_PATH,
     DEFAULT_AGGREGATION,
+    DEFAULT_ESTIMATION_SCHEME,
     DEFAULT_P_CUTOFF,
     DEFAULT_QUANTILE,
     INTENSITY_DIR,
     OVERLAY_DIR,
     SUMMARY_DIR,
+    DEFAULT_THERMAL_FPS,
+    TAIL_BASELINE_AGREEMENT_SIGMA,
+    TAIL_BASELINE_EYE_SMOOTH_SEC,
     TEMPERATURE_DIR,
 )
+from thermometry.tail_baseline import TailBaselineConfig
 
 
 def _add_apply_args(sp: argparse.ArgumentParser) -> None:
@@ -56,6 +61,30 @@ def _add_apply_args(sp: argparse.ArgumentParser) -> None:
                     help="低于该 likelihood 的 bodypart 单帧记 NaN")
     sp.add_argument("--ffill", action="store_true",
                     help="body_temperature 全 NaN 帧用上一帧值前向填充")
+    sp.add_argument(
+        "--scheme",
+        choices=["tail_baseline", "legacy_max"],
+        default=None,
+        help="体温估计方案；默认 tail_baseline（尾温基准+眼均值+置信度）",
+    )
+    sp.add_argument(
+        "--agreement-sigma",
+        type=float,
+        default=None,
+        help="眼温与尾温允许偏差尺度 (°C)，仅 tail_baseline",
+    )
+    sp.add_argument(
+        "--eye-smooth-sec",
+        type=float,
+        default=None,
+        help="眼均温时间平滑窗口（秒），默认 1.0；0 表示不平滑",
+    )
+    sp.add_argument(
+        "--fps",
+        type=float,
+        default=None,
+        help="视频帧率，用于把 eye-smooth-sec 换算成帧数，默认 60",
+    )
 
 
 def cmd_init(args: argparse.Namespace) -> None:
@@ -129,16 +158,35 @@ def cmd_fit(args: argparse.Namespace) -> None:
     print(f"已写入: {out}")
 
 
-def cmd_apply(args: argparse.Namespace) -> None:
-    out = compute.process_csv(
-        args.csv,
-        args.out,
-        args.calibration,
+def _apply_kwargs(args: argparse.Namespace) -> dict:
+    scheme = args.scheme or DEFAULT_ESTIMATION_SCHEME
+    kwargs = dict(
         bodyparts=args.bodyparts if args.bodyparts else None,
         aggregator=args.aggregator,
         quantile=args.quantile,
         p_cutoff=args.p_cutoff,
         ffill_body=args.ffill,
+        scheme=scheme,
+    )
+    if scheme == "tail_baseline":
+        sigma = args.agreement_sigma if args.agreement_sigma is not None else TAIL_BASELINE_AGREEMENT_SIGMA
+        smooth = args.eye_smooth_sec if args.eye_smooth_sec is not None else TAIL_BASELINE_EYE_SMOOTH_SEC
+        fps = args.fps if args.fps is not None else DEFAULT_THERMAL_FPS
+        kwargs["tail_baseline"] = TailBaselineConfig(
+            p_cutoff=args.p_cutoff,
+            agreement_sigma_c=sigma,
+            eye_smooth_sec=smooth,
+            fps=fps,
+        )
+    return kwargs
+
+
+def cmd_apply(args: argparse.Namespace) -> None:
+    out = compute.process_csv(
+        args.csv,
+        args.out,
+        args.calibration,
+        **_apply_kwargs(args),
     )
     print(f"已写入: {out}")
 
@@ -148,11 +196,7 @@ def cmd_batch(args: argparse.Namespace) -> None:
         intensity_dir=args.intensity_dir,
         out_dir=args.out_dir,
         calibration_path=args.calibration,
-        bodyparts=args.bodyparts if args.bodyparts else None,
-        aggregator=args.aggregator,
-        quantile=args.quantile,
-        p_cutoff=args.p_cutoff,
-        ffill_body=args.ffill,
+        **_apply_kwargs(args),
     )
     for p in outs:
         print(f"  {p}")
@@ -183,13 +227,28 @@ def cmd_plot(args: argparse.Namespace) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = args.csv.stem.replace("_temperature", "")
 
-    p1 = plot.plot_body_temperature(
-        args.csv,
-        out_dir / f"{stem}_body.png",
-        fps=args.fps,
-        smooth=args.smooth,
+    df = __import__("pandas").read_csv(args.csv, index_col=0, nrows=1)
+    is_tail = "temperature_confidence" in df.columns or (
+        "estimation_scheme" in df.columns and str(df["estimation_scheme"].iloc[0]) == "tail_baseline"
     )
-    print(f"已写入: {p1}")
+
+    if is_tail and not getattr(args, "legacy_only", False):
+        p0 = plot.plot_tail_baseline(
+            args.csv,
+            out_dir / f"{stem}_tail_baseline.png",
+            fps=args.fps,
+            smooth=args.smooth,
+            conf_threshold=getattr(args, "conf_threshold", 0.3),
+        )
+        print(f"已写入: {p0}")
+    else:
+        p1 = plot.plot_body_temperature(
+            args.csv,
+            out_dir / f"{stem}_body.png",
+            fps=args.fps,
+            smooth=args.smooth,
+        )
+        print(f"已写入: {p1}")
 
     p2 = plot.plot_bodyparts(
         args.csv,
@@ -273,6 +332,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="body_temperature 的滚动平均窗口（帧），1 = 不平滑")
     s.add_argument("--bodyparts", nargs="*", default=None,
                    help="bodyparts 子图里要画哪些点，省略表示全部")
+    s.add_argument("--conf-threshold", type=float, default=0.3,
+                   help="tail_baseline 图上标橙点的置信度阈值")
+    s.add_argument("--legacy-only", action="store_true",
+                   help="只画旧版 body 曲线，不画 tail_baseline 综合图")
     s.set_defaults(func=cmd_plot)
 
     s = sub.add_parser("overlay", help="在 thermal 视频上叠加 bodypart 温度")

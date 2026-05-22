@@ -8,7 +8,8 @@
 | --- | --- |
 | `alignment/` | 双相机标定 + 彩色 → 热成像几何映射，DLC 点反映射到 thermal |
 | `thermometry/` | intensity → 温度 (°C) 标定、逐帧体温计算、汇总与可视化 |
-| `docs/` | `alignment.md` / `thermometry.md` / `performance.md` 详细文档 |
+| `respiration/` | 胸腔 ROI 帧间运动（起伏）→ 带通 + FFT → 呼吸频率（次/分） |
+| `docs/` | `algorithm_overview.md`（算法报告）/ `alignment.md` / `thermometry.md` / `respiration.md` / `deeplabcut.md` / `performance.md` |
 | `dlc_*.py` | DLC 项目辅助脚本（标点、修复、工作流） |
 
 ## 主要工作流

@@ -57,6 +57,79 @@ def plot_body_temperature(
     return out_png
 
 
+def plot_tail_baseline(
+    temperature_csv: Path,
+    out_png: Path,
+    *,
+    fps: float | None = None,
+    smooth: int = 15,
+    conf_threshold: float = 0.3,
+    show: bool = False,
+) -> Path:
+    """尾部基准方案：主体温 + 眼均值 + 置信度（副轴）。"""
+    import matplotlib.pyplot as plt
+
+    df = _load(temperature_csv)
+    if "body_temperature" not in df.columns:
+        raise KeyError("需要 body_temperature 列")
+
+    x, xlabel = _frame_to_seconds(df, fps)
+    body = df["body_temperature"].to_numpy(dtype=float)
+    conf = (
+        df["temperature_confidence"].to_numpy(dtype=float)
+        if "temperature_confidence" in df.columns
+        else np.ones(len(df))
+    )
+    eye = (
+        df["eye_temperature_mean"].to_numpy(dtype=float)
+        if "eye_temperature_mean" in df.columns
+        else np.full(len(df), np.nan)
+    )
+    eye_raw = (
+        df["eye_temperature_mean_raw"].to_numpy(dtype=float)
+        if "eye_temperature_mean_raw" in df.columns
+        else None
+    )
+
+    fig, ax1 = plt.subplots(figsize=(11, 4.8))
+    ax2 = ax1.twinx()
+
+    ax1.plot(x, body, lw=0.7, color="#888888", alpha=0.6, label="body (tail, raw)")
+    if smooth and smooth > 1:
+        bs = pd.Series(body).rolling(smooth, min_periods=1, center=True).mean()
+        ax1.plot(x, bs.to_numpy(), lw=1.8, color="#d62728", label=f"body smooth (w={smooth})")
+    if eye_raw is not None and np.isfinite(eye_raw).any():
+        ax1.plot(x, eye_raw, lw=0.5, color="#1f77b4", alpha=0.35, label="eye mean (raw)")
+    if np.isfinite(eye).any():
+        ax1.plot(x, eye, lw=1.2, color="#1f77b4", alpha=0.9, label="eye mean (time smooth)")
+    low = conf < conf_threshold
+    if low.any():
+        ax1.scatter(
+            x[low], body[low], s=8, c="orange", alpha=0.5, label=f"low conf (<{conf_threshold})"
+        )
+
+    ax2.fill_between(x, 0, conf, color="#2ca02c", alpha=0.2, label="confidence")
+    ax2.plot(x, conf, lw=0.6, color="#2ca02c", alpha=0.8)
+    ax2.set_ylim(0, 1.05)
+    ax2.set_ylabel("confidence")
+
+    ax1.set_xlabel(xlabel)
+    ax1.set_ylabel("temperature (°C)")
+    ax1.set_title(f"tail-baseline temperature — {temperature_csv.name}")
+    ax1.grid(alpha=0.3)
+    lines1, lab1 = ax1.get_legend_handles_labels()
+    lines2, lab2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, lab1 + lab2, loc="upper right", fontsize=8)
+    fig.tight_layout()
+
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    if show:
+        plt.show()
+    plt.close(fig)
+    return out_png
+
+
 def plot_bodyparts(
     temperature_csv: Path,
     out_png: Path,

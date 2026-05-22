@@ -1,0 +1,39 @@
+"""respiration 模块路径与默认参数。"""
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT / "data"
+COLOR_DIR = DATA_DIR / "color"
+DLC_RESULTS_DIR = DATA_DIR / "dlc_results"
+
+# 胸腔 ROI 信号与呼吸率结果
+OUTPUT_DIR = DATA_DIR / "aligned" / "respiration"
+SIGNAL_DIR = OUTPUT_DIR
+RATE_DIR = OUTPUT_DIR
+
+# 用双眼中点 → 尾根 定义身体轴向；胸腔中心沿该轴的比例（0=眼、1=尾）
+DEFAULT_CHEST_FRACTION = 0.38
+# ROI 半宽 ≈ 眼间距 × 该系数；半长 ≈ 眼–尾距离 × 该系数
+DEFAULT_ROI_WIDTH_SCALE = 0.55
+DEFAULT_ROI_LENGTH_SCALE = 0.30
+
+DEFAULT_P_CUTOFF = 0.5
+DEFAULT_FPS = 25.0
+
+# 小鼠俯视呼吸频段（Hz）；约 1.5–5 Hz → 90–300 次/分
+DEFAULT_F_MIN_HZ = 1.5
+DEFAULT_F_MAX_HZ = 5.0
+DEFAULT_FILTER_ORDER = 4
+
+# 滑动 FFT：窗长需覆盖数个呼吸周期
+DEFAULT_FFT_WINDOW_SEC = 6.0
+DEFAULT_FFT_HOP_SEC = 0.5
+
+# 谱图与叠加视频
+PLOT_DIR = OUTPUT_DIR / "plots"
+OVERLAY_DIR = OUTPUT_DIR / "overlay"
+
+# 运动信号：对齐 ROI 固定尺寸；metric = mad | heave | combo
+DEFAULT_MOTION_METRIC = "mad"
+MOTION_PATCH_WIDTH = 64
+MOTION_PATCH_HEIGHT = 32

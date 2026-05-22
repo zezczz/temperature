@@ -22,10 +22,15 @@ from thermometry import calibration as cal
 from thermometry.config import (
     CALIBRATION_PATH,
     DEFAULT_AGGREGATION,
+    DEFAULT_ESTIMATION_SCHEME,
     DEFAULT_P_CUTOFF,
     DEFAULT_QUANTILE,
     INTENSITY_DIR,
     TEMPERATURE_DIR,
+)
+from thermometry.tail_baseline import (
+    TailBaselineConfig,
+    apply_tail_baseline_vectorized,
 )
 
 _INTENSITY_SUFFIX = "_intensity"
@@ -77,6 +82,8 @@ def apply_to_dataframe(
     p_cutoff: float = DEFAULT_P_CUTOFF,
     keep_xy: bool = True,
     ffill_body: bool = False,
+    scheme: str = DEFAULT_ESTIMATION_SCHEME,
+    tail_baseline: TailBaselineConfig | None = None,
 ) -> pd.DataFrame:
     """对单个 intensity DataFrame 做标定，返回温度 DataFrame。
 
@@ -88,6 +95,8 @@ def apply_to_dataframe(
     aggregator : 多 bodypart 聚合方式
     p_cutoff : likelihood 低于该值的 bodypart 单帧记 NaN
     keep_xy : 是否保留 x/y 列（便于后续 overlay 视频）
+    scheme : ``tail_baseline``（尾温为主体 + 眼均值 + 置信度）或 ``legacy_max``（多部位取 max）
+    tail_baseline : 仅 scheme=tail_baseline 时生效的细项配置
     """
     bps = list_bodyparts(df) if bodyparts is None else list(bodyparts)
     if not bps:
@@ -123,12 +132,20 @@ def apply_to_dataframe(
         if lc in df.columns:
             out[lc] = df[lc]
 
+    if scheme == "tail_baseline":
+        tb_cfg = tail_baseline or TailBaselineConfig(p_cutoff=p_cutoff)
+        out = apply_tail_baseline_vectorized(out, cfg=tb_cfg)
+        if ffill_body:
+            out["body_temperature"] = out["body_temperature"].ffill()
+        return out
+
     if temp_cols:
         arr = out[temp_cols].to_numpy(dtype=float)
         body = pd.Series(_aggregate(arr, aggregator, quantile), index=out.index)
         if ffill_body:
             body = body.ffill()
         out["body_temperature"] = body
+        out["estimation_scheme"] = "legacy_max"
     else:
         out["body_temperature"] = np.nan
 

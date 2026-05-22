@@ -6,7 +6,9 @@
 2. **彩色 → 热成像映射** + 热图采样（`alignment.dlc sample`）
 3. **温度计算与聚合**（`thermometry apply`）
 
-> 估算的输入：彩色视频 **1920×1080**，DLC 项目配置 `ResNet-50 (GN), output_stride=16, 3 bodyparts`，热成像视频 **1440×1080**。FLOP 与 MAC 关系：**1 MAC ≈ 2 FLOP**。
+> 输入：彩色视频 **1920×1080**，DLC 项目配置 `ResNet-50 (GN), output_stride=16, 3 bodyparts`，热成像视频 **1440×1080**。FLOP 与 MAC 关系：**1 MAC = 2 FLOP**。
+>
+> DLC 部分给的是 **`scripts/bench_dlc.py` 在 RTX 4070 Laptop 上的实测值**；其余阶段 OpenCV/numpy 的估算见 §2、§3。
 
 ---
 
@@ -23,51 +25,63 @@
 
 > ResNet-50 默认 stride=32；DLC 通过 dilation 把最后一个 stage 改成 stride=16，**特征图大一倍**，FLOPs 比标准 ResNet-50 高约 30%。
 
-### 1.2 参数量
+### 1.2 参数量（实测）
+
+`fvcore.parameter_count` 在加载 `snapshot-best-200.pt` 后给出：
 
 | 模块 | 参数 |
 | --- | --- |
-| ResNet-50 backbone | ≈ **25.56 M** |
-| Heatmap head（2048×3×3×3 + 3） | **55,299** |
-| Locref head（2048×3×3×6 + 6） | **110,598** |
-| **合计** | **≈ 25.73 M params** |
-| 显存占用（FP32） | ≈ **103 MB** 权重 |
+| Backbone (ResNet-50 GN, stride=16) | **≈ 23.51 M** |
+| Heatmap + Locref head | **≈ 0.17 M** |
+| **合计** | **23,673,929 ≈ 23.67 M params** |
+| 显存占用（FP32 权重） | ≈ **95 MB** |
 
-### 1.3 FLOPs（单帧, 1920×1080 输入）
+> 比标准 ResNet-50（25.56 M）少 ≈ 2 M，是 GroupNorm 版本省下了 BN 的 running stats / γβ 参数。
 
-#### Backbone（ResNet-50, stride=16）
-- 224×224 时官方约 **4.1 GMACs**；stride-16 改造后 ≈ **5.5 GMACs**。
-- 1920×1080 与 224×224 像素数之比 ≈ **41.3×**。
-- 单帧 ≈ 5.5 × 41.3 ≈ **227 GMACs ≈ 454 GFLOPs**。
+### 1.3 FLOPs（单帧 1920×1080, 实测）
 
-#### Heads（输出 240×135）
-- Heatmap deconv：`240×135 × 9 × 2048 × 3` ≈ **1.79 GMACs ≈ 3.6 GFLOPs**
-- Locref deconv：`240×135 × 9 × 2048 × 6` ≈ **3.58 GMACs ≈ 7.2 GFLOPs**
-- 合计 ≈ **5.37 GMACs ≈ 10.7 GFLOPs**
-
-#### DLC 单帧总计
+`fvcore.FlopCountAnalysis` 报告：
 
 | 项 | MACs | FLOPs |
 | --- | --- | --- |
-| Backbone | 227 G | 454 G |
-| Heads | 5.4 G | 10.7 G |
-| **合计** | **≈ 232 GMACs** | **≈ 465 GFLOPs** |
+| Backbone (`backbone.model`) | **260.44 G** | 520.88 G |
+| └ `layer4` | 122.39 G | 244.78 G |
+| └ `layer3` | 61.38 G | 122.76 G |
+| └ `layer2` | 43.11 G | 86.22 G |
+| └ `layer1` | 28.52 G | 57.04 G |
+| └ stem + 其它 | 5.04 G | 10.08 G |
+| Heads (heatmap + locref) | ≈ 1.35 G | 2.70 G |
+| **合计** | **≈ 261.79 GMACs** | **≈ 523.58 GFLOPs** |
 
-> 训练时 `batch_size: 8`，推理时 DLC 默认 batch=1；逐帧推理一般就是 ≈ 0.47 TFLOPs/帧。
+要点：
 
-### 1.4 延时实测/估算
+- **backbone 占 99.5%**，其中 **`layer4` 单独 47%**（stride=16 让最后一个 stage 多算了一倍）。
+- **heads 仅 0.5%**（输出 stride=8，特征图 240×135，3+6 通道）。
+- 标准 ResNet-50（stride=32）在 224×224 是 4.1 GMACs；本项目 stride=16 在 224×224 实测 **6.30 GMACs**，多 50%，符合预期。
+- 同分辨率改成 batch=N 时 FLOPs/吞吐都按 N 线性增长。
 
-| 平台 | 理论算力 | 单帧延时（FP32） | 备注 |
+### 1.4 延时（实测）
+
+`scripts/bench_dlc.py` 在 **RTX 4070 Laptop GPU** 上 20 次推理：
+
+| 项 | 值 |
+| --- | --- |
+| mean | **95.77 ms / 帧** |
+| median | 95.79 ms |
+| min / max | 95.54 / 96.08 ms |
+| std | 0.15 ms |
+| throughput | **10.44 FPS** |
+
+3514 帧（≈140 s @ 25 fps）视频：
+
+| 平台 | 单帧 | 全片 | 备注 |
 | --- | --- | --- | --- |
-| RTX 4090 | 83 TFLOPs FP32 | **≈ 6 ms** | 受显存带宽限制，实际 8~15 ms |
-| RTX 3090 | 35 TFLOPs FP32 | **≈ 13 ms** | 实际 15~25 ms |
-| RTX 3060 | 13 TFLOPs FP32 | **≈ 36 ms** | 实际 40~70 ms |
-| GTX 1660 | 5 TFLOPs FP32 | **≈ 93 ms** | 实际 100~200 ms |
-| CPU (i7-12700) | 0.5 TFLOPs | **≈ 0.9 s** | 实际 1~2 s/帧（DLC PyTorch 后端） |
+| **RTX 4070 Laptop**（本机实测） | **96 ms** | **≈ 5.6 min** | FP32, batch=1 |
+| RTX 4090 (估) | ≈ 25~35 ms | ≈ 1.5~2 min | 算力 ≈ 4070 Laptop 的 3~4× |
+| RTX 3060 (估) | ≈ 130~180 ms | ≈ 7~10 min | 算力 ≈ 4070 Laptop 的 0.5~0.7× |
+| CPU (估) | ≈ 1~2 s | ≈ 1~2 h | DLC PyTorch 后端 |
 
-> "理论 = 465 GFLOPs ÷ 卡算力"；实测因显存读写、Python overhead、kernel launch 一般是理论值的 2~3 倍。FP16/AMP 可再快 1.5~2×（pytorch_config 默认 `autocast.enabled: false`，没开）。
-
-3514 帧视频在 RTX 3060 上跑完：**约 2~4 分钟**；在 CPU 上：**约 1~2 小时**。
+> 想要更快：开 `autocast.enabled: true`（FP16）通常再快 1.5~2×；下采样到 960×540 → FLOPs ↓ 4× → 帧时间约 25~35 ms。详见 §6。
 
 ---
 
@@ -142,25 +156,25 @@
 
 ### 4.1 单帧成本
 
-| 阶段 | 参数量 | FLOPs/帧 | 单帧延时 (RTX 3060 / CPU) |
+| 阶段 | 参数量 | FLOPs/帧 | 单帧延时 (RTX 4070 Laptop / CPU) |
 | --- | --- | --- | --- |
-| DLC 推理 | **25.73 M** | **465 G** | 40~70 ms / 1~2 s |
+| DLC 推理 | **23.67 M** | **523.6 G** | **95.8 ms** / ≈ 1~2 s |
 | 几何映射 + 采样 | 9 floats | 0.027 G | — / 5~10 ms |
 | 温度计算 | 2 floats | 1.4 × 10⁻⁸ G | — / <0.001 ms |
-| **合计** | **≈ 25.73 M** | **≈ 465 G** | **≈ 45~80 ms / ≈ 1~2 s** |
+| **合计** | **≈ 23.67 M** | **≈ 523.6 G** | **≈ 100~105 ms / ≈ 1~2 s** |
 
-> 三个阶段计算量比例 **DLC : 映射采样 : 温度 ≈ 17000 : 1 : 5×10⁻⁵**。
+> 三个阶段计算量比例 **DLC : 映射采样 : 温度 ≈ 19000 : 1 : 5×10⁻⁵**。
 
 ### 4.2 一段视频（3514 帧, ≈ 140 s @ 25 fps）
 
-| 阶段 | RTX 3060 | RTX 4090 | CPU (i7-12700) |
+| 阶段 | RTX 4070 Laptop（本机实测） | RTX 4090（估） | CPU（估） |
 | --- | --- | --- | --- |
-| DLC | **2~4 min** | **30~50 s** | **1~2 h** |
+| DLC | **≈ 5.6 min** | **1.5~2 min** | **1~2 h** |
 | sample | 30~40 s | 30~40 s | 30~40 s |
 | apply | <1 s | <1 s | <1 s |
-| **End-to-end** | **3~5 min** | **1~2 min** | **1~2 h** |
+| **End-to-end** | **≈ 6~7 min** | **2~3 min** | **1~2 h** |
 
-> sample 阶段不上 GPU（只用 cv2 在 CPU 上算），所以在高端 GPU 卡上整体延时会被它拖到 ~30 秒下限；如果对极致吞吐有需求，可以把 boxFilter / argmax 改用 cupy 或 torch+cuda。
+> sample 在 CPU 上跑（cv2 / numpy），所以即使换更强的 GPU 也不会更快。如果要把整段视频压到 1 分钟以内，要么 (1) DLC 改 batch + FP16；(2) 把 boxFilter / argmax 也搬到 GPU（cupy / torch）。
 
 ### 4.3 内存峰值
 
@@ -174,7 +188,34 @@
 
 ## 5. 怎么自己测真实数字
 
-### 5.1 DLC 推理延时
+### 5.1 DLC：参数 / FLOPs / 延时一次给齐
+
+仓库自带脚本 `scripts/bench_dlc.py`，会自动找到 `dlc_project/` 里最新的 PyTorch shuffle、加载 `snapshot-best-*.pt`，然后跑 fvcore 数 FLOPs + 实测延时。
+
+```powershell
+# 默认 1920×1080, batch=1, 20 次推理, 自动选 cuda
+python scripts\bench_dlc.py
+
+# 切到一半分辨率看提速
+python scripts\bench_dlc.py --height 540 --width 960 --iters 20
+
+# 看 batch 吞吐
+python scripts\bench_dlc.py --batch 4 --iters 10
+
+# 强制 CPU 基线
+python scripts\bench_dlc.py --device cpu --iters 3
+```
+
+输出会同时给：
+
+- `Params : 23,673,929 (~23.67 M)`
+- `MACs/帧 : 261.79 GMACs` / `FLOPs/帧 : 523.58 GFLOPs`
+- 模块级 top-10 占比
+- 20 次实测的 `mean / median / min / max / std (ms)` 和 `throughput (FPS)`
+
+依赖：`pip install fvcore`（DEEPLABCUT 环境里已加）。
+
+### 5.2 也想测完整 DLC 推理流水（含 I/O / 预处理）
 
 ```python
 import time, deeplabcut as dlc
@@ -183,18 +224,7 @@ dlc.analyze_videos(config_path, [video_path], shuffle=1, save_as_csv=True)
 print("elapsed:", time.time() - t0)
 ```
 
-或者更精细，把 `deeplabcut.pose_estimation_pytorch.runners` 的 batch 循环加 `torch.cuda.synchronize()` + `time.perf_counter()` 套上。
-
-### 5.2 参数 / FLOPs（用 fvcore）
-
-```python
-import torch
-from fvcore.nn import FlopCountAnalysis, parameter_count_table
-# 假设你已经加载了 DLC 的 model（PyTorch nn.Module）
-x = torch.randn(1, 3, 1080, 1920, device="cuda")
-print("params:", parameter_count_table(model))
-print("FLOPs :", FlopCountAnalysis(model, x).total() / 1e9, "GFLOPs")
-```
+比 §5.1 的纯网络延时多了视频解码、letterbox、CPU→GPU 传输、后处理 argmax，一般是 1.2~1.5× 倍。
 
 ### 5.3 sample / apply 延时
 
@@ -226,6 +256,7 @@ Measure-Command {
 
 ## 7. 备忘
 
-- 上表的所有 GFLOPs 数都按 **MAC × 2** 算出；如果你引用论文用的是 GMACs，请折半。
+- §1 的所有数字都是 **`scripts/bench_dlc.py` 在 RTX 4070 Laptop GPU、FP32、batch=1、1920×1080 输入** 上跑出来的实测；想换设备直接重跑脚本即可。
+- GFLOPs 按 **MAC × 2** 折算；引用论文如果用的是 GMACs 请直接看 MACs 列。
 - 没有计入：mp4 解码 / 编码、Python 解释器开销、磁盘 I/O。视频解码在 1920×1080 H.264 上 CPU 约 **3~6 ms/帧**，在长视频里会和 DLC GPU 推理并发掩盖。
 - DLC `batch_size`（推理）默认 1，**改成 4~8 通常能再快 30~80%**，前提是显存够（每张图激活 ≈ 1.5 GB）。

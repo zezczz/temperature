@@ -7,6 +7,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_DIR = PROJECT_ROOT / "data" / "color"
 DLC_PROJECT_DIR = PROJECT_ROOT / "dlc_project"
 
+# 推理结果单独目录（csv/h5/可视化 mp4 都在此，analyze 与 plot 须用同一目录）
+INFERENCE_OUTPUT_DIR = PROJECT_ROOT / "data" / "dlc_results"
+
 CONFIG_PATH: Path | None = None
 CONFIG_PATH_CACHE = PROJECT_ROOT / ".dlc_config_path"
 

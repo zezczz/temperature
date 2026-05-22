@@ -1,5 +1,7 @@
 # Color / Thermal 双相机对齐
 
+> 算法总览见 [algorithm_overview.md](algorithm_overview.md)。
+
 把 `data/thermal/` 里 **1440×1080** 的热成像视频，逐帧映射到 `data/color/` 里 **1920×1080** 的彩色视频坐标系。两台相机位置固定、夹角很小，所以**只需标定一次**，把得到的几何变换写死在 `alignment/transform.json` 里，之后所有视频/帧共用。
 
 ---
