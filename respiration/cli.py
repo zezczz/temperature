@@ -173,8 +173,18 @@ def _add_motion_args(p: argparse.ArgumentParser) -> None:
 
 def _add_analyze_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--fps", type=float, default=None, help="帧率；省略则从 .meta.txt 或视频读取")
-    p.add_argument("--f-min", type=float, default=cfg.DEFAULT_F_MIN_HZ, help="呼吸频段下限 (Hz)")
-    p.add_argument("--f-max", type=float, default=cfg.DEFAULT_F_MAX_HZ, help="呼吸频段上限 (Hz)")
+    p.add_argument(
+        "--f-min",
+        type=float,
+        default=cfg.DEFAULT_F_MIN_HZ,
+        help=f"带通/FFT 下限 (Hz)，默认 {cfg.DEFAULT_F_MIN_HZ:.3f} ≈ {cfg.DEFAULT_BPM_MIN} 次/分",
+    )
+    p.add_argument(
+        "--f-max",
+        type=float,
+        default=cfg.DEFAULT_F_MAX_HZ,
+        help=f"带通/FFT 上限 (Hz)，默认 {cfg.DEFAULT_F_MAX_HZ:.3f} ≈ {cfg.DEFAULT_BPM_MAX} 次/分",
+    )
     p.add_argument("--filter-order", type=int, default=cfg.DEFAULT_FILTER_ORDER)
     p.add_argument("--fft-window-sec", type=float, default=cfg.DEFAULT_FFT_WINDOW_SEC)
     p.add_argument("--fft-hop-sec", type=float, default=cfg.DEFAULT_FFT_HOP_SEC)

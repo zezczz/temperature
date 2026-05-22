@@ -20,9 +20,17 @@ DEFAULT_ROI_LENGTH_SCALE = 0.30
 DEFAULT_P_CUTOFF = 0.5
 DEFAULT_FPS = 25.0
 
-# 小鼠俯视呼吸频段（Hz）；约 1.5–5 Hz → 90–300 次/分
-DEFAULT_F_MIN_HZ = 1.5
-DEFAULT_F_MAX_HZ = 5.0
+# 呼吸率搜索范围（次/分）→ 带通滤波与 FFT 主峰搜索共用
+DEFAULT_BPM_MIN = 60
+DEFAULT_BPM_MAX = 250
+
+
+def bpm_to_hz(bpm: float) -> float:
+    return bpm / 60.0
+
+
+DEFAULT_F_MIN_HZ = bpm_to_hz(DEFAULT_BPM_MIN)   # 1.0 Hz
+DEFAULT_F_MAX_HZ = bpm_to_hz(DEFAULT_BPM_MAX)   # ≈ 4.17 Hz
 DEFAULT_FILTER_ORDER = 4
 
 # 滑动 FFT：窗长需覆盖数个呼吸周期

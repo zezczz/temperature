@@ -7,7 +7,13 @@ import numpy as np
 import pandas as pd
 
 from respiration.analyze import RespirationResult, analyze_signal_csv
-from respiration.config import DEFAULT_F_MAX_HZ, DEFAULT_F_MIN_HZ, PLOT_DIR
+from respiration.config import (
+    DEFAULT_BPM_MAX,
+    DEFAULT_BPM_MIN,
+    DEFAULT_F_MAX_HZ,
+    DEFAULT_F_MIN_HZ,
+    PLOT_DIR,
+)
 
 
 def _read_meta_fps(meta_path: Path) -> float | None:
@@ -161,7 +167,13 @@ def plot_respiration(
                 lw=1.0,
                 label=f"{result.global_peak_hz:.2f} Hz",
             )
-        ax2.axvspan(DEFAULT_F_MIN_HZ, DEFAULT_F_MAX_HZ, color="#e8f4e8", alpha=0.5, label="默认搜索频段")
+        ax2.axvspan(
+            DEFAULT_F_MIN_HZ,
+            DEFAULT_F_MAX_HZ,
+            color="#e8f4e8",
+            alpha=0.5,
+            label=f"搜索频段 {DEFAULT_BPM_MIN}–{DEFAULT_BPM_MAX} 次/分",
+        )
     ax2.set_xlabel("频率 (Hz)")
     ax2.set_ylabel("|FFT|")
     ax2.set_title("全段频谱 (滤波后)")
