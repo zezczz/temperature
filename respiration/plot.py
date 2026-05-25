@@ -189,6 +189,9 @@ def plot_respiration(
         f"帧率: {result.fps:.1f} fps",
         f"时长: {t[-1]:.1f} s" if len(t) else "",
     ]
+    if np.isfinite(result.median_inst_bpm):
+        lines.append(f"瞬时率中位数: {result.median_inst_bpm:.1f} 次/分")
+    lines.append(f"有效 ROI 帧: {result.valid_frac * 100:.1f}%")
     if summary:
         if "motion_metric" in summary or "signal" in summary:
             pass

@@ -22,11 +22,18 @@ def motion_mad(prev: np.ndarray, curr: np.ndarray) -> float:
 
 def motion_heave(prev: np.ndarray, curr: np.ndarray) -> float:
     """身体轴对齐后，垂直于体轴方向的位移幅度（俯视起伏）。"""
-    shift, _ = cv2.phaseCorrelate(
+    from respiration.config import HEAVE_MAX_SHIFT_PX, HEAVE_MIN_RESPONSE
+
+    shift, response = cv2.phaseCorrelate(
         prev.astype(np.float64),
         curr.astype(np.float64),
     )
-    return float(abs(shift[1]))
+    if response < HEAVE_MIN_RESPONSE:
+        return float("nan")
+    dy = float(abs(shift[1]))
+    if dy > HEAVE_MAX_SHIFT_PX:
+        return float("nan")
+    return dy
 
 
 def compute_frame_motion(

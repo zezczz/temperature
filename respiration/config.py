@@ -33,6 +33,14 @@ DEFAULT_F_MIN_HZ = bpm_to_hz(DEFAULT_BPM_MIN)   # 1.0 Hz
 DEFAULT_F_MAX_HZ = bpm_to_hz(DEFAULT_BPM_MAX)   # ≈ 4.17 Hz
 DEFAULT_FILTER_ORDER = 4
 
+# 运动序列稳健化：抑制 phaseCorrelate 尖峰、短 gap 才插值
+MOTION_MAD_CLIP_K = 5.0          # 超过 median + k*MAD 的 motion 截断
+MAX_INTERP_GAP_SEC = 0.15        # 更长无效段不插值，避免伪造信号
+MIN_VALID_FRAC_IN_WINDOW = 0.75  # 滑动 FFT 窗内至少 75% 帧 valid
+HEAVE_MAX_SHIFT_PX = 3.0         # heave 单帧位移上限（对齐 patch 像素）
+HEAVE_MIN_RESPONSE = 0.05        # phaseCorrelate 响应过低视为不可信
+MOTION_MEDIAN_FILTER = 3         # 分析前中值滤波窗口（帧，奇数）
+
 # 滑动 FFT：窗长需覆盖数个呼吸周期
 DEFAULT_FFT_WINDOW_SEC = 6.0
 DEFAULT_FFT_HOP_SEC = 0.5

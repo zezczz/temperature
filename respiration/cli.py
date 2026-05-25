@@ -12,6 +12,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
+
 from respiration import config as cfg
 from respiration.analyze import analyze_signal_csv, save_analysis
 from respiration.extract import extract_chest_motion
@@ -93,6 +95,9 @@ def cmd_analyze(args: argparse.Namespace) -> None:
     prefix = Path(args.out_prefix) if args.out_prefix else _default_prefix(signal_csv)
     rate_path, filtered_path, summary_path = save_analysis(result, signal_csv, prefix)
     print(f"全段呼吸率: {result.global_bpm:.2f} 次/分 ({result.global_peak_hz:.3f} Hz)")
+    if np.isfinite(result.median_inst_bpm):
+        print(f"瞬时率中位数: {result.median_inst_bpm:.2f} 次/分")
+    print(f"有效 ROI 帧占比: {result.valid_frac * 100:.1f}%")
     print(f"瞬时率: {rate_path}")
     print(f"滤波信号: {filtered_path}")
     print(f"摘要: {summary_path}")
